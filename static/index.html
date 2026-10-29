@@ -1,0 +1,872 @@
+<title>Shutdown Impact Calculator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/*
+  Layout : sticky header → KPI tiles + capacity gauge → params → SKU table → results → action plan
+  Palette: deep ocean-blue accent on cool slate — deliberate industrial feel
+  Type   : IBM Plex Sans (UI) + IBM Plex Mono (data/numbers)
+  Sign.  : live capacity gauge that shifts green → amber → red as SKUs are added
+*/
+:root {
+  --bg:       #F3F5F9;
+  --surf:     #FFFFFF;
+  --surf2:    #ECEEF4;
+  --bdr:      #D4D9E5;
+  --bdr2:     #E8EBF3;
+  --fg:       #0F172A;
+  --fg2:      #475569;
+  --fg3:      #94A3B8;
+  --acc:      #1D55A0;
+  --acc-s:    #EBF1FA;
+  --ok:       #166534;
+  --ok-s:     #F0FDF4;
+  --ok-mid:   #DCFCE7;
+  --warn:     #92400E;
+  --warn-s:   #FFFBEB;
+  --warn-mid: #FEF3C7;
+  --risk:     #991B1B;
+  --risk-s:   #FFF5F5;
+  --risk-mid: #FEE2E2;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:       #0C111B;
+    --surf:     #141C2B;
+    --surf2:    #1C2538;
+    --bdr:      #2D3A52;
+    --bdr2:     #232F44;
+    --fg:       #E2E8F5;
+    --fg2:      #8B9BB5;
+    --fg3:      #4A5568;
+    --acc:      #5294E2;
+    --acc-s:    #0D1C35;
+    --ok:       #34D399;
+    --ok-s:     #051810;
+    --ok-mid:   #0C2E1E;
+    --warn:     #FBBF24;
+    --warn-s:   #1C1507;
+    --warn-mid: #2B1E08;
+    --risk:     #F87171;
+    --risk-s:   #1F0A0A;
+    --risk-mid: #2D0E0E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:       #0C111B;
+  --surf:     #141C2B;
+  --surf2:    #1C2538;
+  --bdr:      #2D3A52;
+  --bdr2:     #232F44;
+  --fg:       #E2E8F5;
+  --fg2:      #8B9BB5;
+  --fg3:      #4A5568;
+  --acc:      #5294E2;
+  --acc-s:    #0D1C35;
+  --ok:       #34D399;
+  --ok-s:     #051810;
+  --ok-mid:   #0C2E1E;
+  --warn:     #FBBF24;
+  --warn-s:   #1C1507;
+  --warn-mid: #2B1E08;
+  --risk:     #F87171;
+  --risk-s:   #1F0A0A;
+  --risk-mid: #2D0E0E;
+  color-scheme: dark;
+}
+
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.5;
+  padding-left:  max(16px, env(safe-area-inset-left,  0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: 40px;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.pg-header {
+  background: var(--acc);
+  color: #fff;
+  display: flex; align-items: center; gap: 14px;
+  padding: 15px max(24px, env(safe-area-inset-left, 0px));
+  margin-left:  calc(-1 * max(16px, env(safe-area-inset-left,  0px)));
+  margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+  margin-bottom: 20px;
+}
+.hdr-icon {
+  width: 42px; height: 42px; flex-shrink: 0;
+  background: rgba(255,255,255,.15); border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.hdr-text h1 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.hdr-text p  { font-size: 12px; opacity: .78; margin-top: 2px; }
+
+/* ── KPI tiles ───────────────────────────────────────────────── */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.kpi {
+  background: var(--surf);
+  border: 1px solid var(--bdr);
+  border-radius: 10px;
+  padding: 14px 15px;
+  position: relative; overflow: hidden;
+}
+.kpi::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0;
+  height: 3px; background: var(--acc); border-radius: 10px 10px 0 0;
+}
+.kpi.ok::after   { background: var(--ok); }
+.kpi.warn::after { background: var(--warn); }
+.kpi.risk::after { background: var(--risk); }
+.kpi-lbl  { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: var(--fg2); }
+.kpi-num  { font-family: var(--mono); font-size: 28px; font-weight: 500; line-height: 1.1; margin-top: 3px; font-variant-numeric: tabular-nums; color: var(--fg); }
+.kpi-num.ok   { color: var(--ok); }
+.kpi-num.warn { color: var(--warn); }
+.kpi-num.risk { color: var(--risk); }
+.kpi-sub  { font-size: 11px; color: var(--fg3); margin-top: 2px; }
+
+/* ── Capacity gauge (signature element) ─────────────────────── */
+.gauge-card {
+  background: var(--surf);
+  border: 1px solid var(--bdr);
+  border-radius: 10px;
+  padding: 15px 18px;
+  margin-bottom: 14px;
+}
+.gauge-hdr {
+  display: flex; justify-content: space-between; align-items: baseline;
+  flex-wrap: wrap; gap: 4px; margin-bottom: 9px;
+}
+.gauge-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--fg2); }
+.gauge-meta  { font-family: var(--mono); font-size: 11px; color: var(--fg3); }
+.gauge-track {
+  height: 14px; background: var(--surf2);
+  border-radius: 7px; overflow: hidden; position: relative;
+}
+.gauge-fill {
+  height: 100%; border-radius: 7px;
+  transition: width .45s cubic-bezier(.4,0,.2,1), background .45s ease;
+  min-width: 3px;
+}
+.gauge-ticks {
+  display: flex; justify-content: space-between;
+  margin-top: 5px; font-size: 10px; color: var(--fg3); font-family: var(--mono);
+}
+
+/* ── Cards ──────────────────────────────────────────────────── */
+.card {
+  background: var(--surf);
+  border: 1px solid var(--bdr);
+  border-radius: 10px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.card-hd {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bdr);
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+.card-hd h2 { font-size: 13px; font-weight: 600; flex: 1; }
+.card-hd .badge {
+  font-size: 11px; font-weight: 700;
+  background: var(--acc-s); color: var(--acc);
+  padding: 2px 9px; border-radius: 99px;
+}
+.chev { color: var(--fg3); font-size: 11px; transition: transform .2s; flex-shrink: 0; }
+.chev.open { transform: rotate(180deg); }
+.card-bd { padding: 16px; }
+.card-bd.hide { display: none; }
+
+/* ── Parameter grid ─────────────────────────────────────────── */
+.pgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 12px 18px;
+}
+.fld { display: flex; flex-direction: column; gap: 4px; }
+.fld label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fg2); }
+.fld-hint  { font-size: 11px; color: var(--fg3); }
+
+input[type=number], input[type=date], select {
+  font-family: var(--mono); font-size: 13px;
+  padding: 7px 10px;
+  background: var(--surf2);
+  border: 1.5px solid var(--bdr);
+  border-radius: 6px;
+  color: var(--fg);
+  width: 100%; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none;
+}
+input:focus, select:focus {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px var(--acc-s);
+}
+
+/* ── Timeline ───────────────────────────────────────────────── */
+.tl-wrap { display: flex; height: 36px; border-radius: 7px; overflow: hidden; margin-top: 16px; }
+.tl-seg  {
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; white-space: nowrap; overflow: hidden;
+  text-align: center; font-size: 10px; font-weight: 600; padding: 0 4px;
+  transition: flex .4s cubic-bezier(.4,0,.2,1);
+}
+.tl-seg.pre     { background: var(--acc); }
+.tl-seg.rdown   { background: #D97706; }
+.tl-seg.halt    { background: #C0392B; }
+.tl-seg.rup     { background: #F59E0B; }
+.tl-seg.recover { background: #16803E; }
+
+/* ── SKU table ──────────────────────────────────────────────── */
+.tbl-scroll { overflow-x: auto; margin: 0 -16px; }
+
+.sku-tbl { width: 100%; min-width: 680px; border-collapse: collapse; }
+.sku-tbl th {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700;
+  color: var(--fg3); background: var(--surf2);
+  padding: 7px 10px; text-align: left;
+  border-bottom: 1px solid var(--bdr); white-space: nowrap;
+}
+.sku-tbl td {
+  padding: 5px 7px; border-bottom: 1px solid var(--bdr2); vertical-align: middle;
+}
+.sku-tbl tr:last-child td { border-bottom: none; }
+.sku-tbl tr:hover td { background: var(--surf2); }
+
+.sku-tbl input {
+  font-family: var(--mono); font-size: 13px;
+  padding: 4px 8px; width: 100%;
+  background: transparent; border: 1.5px solid transparent;
+  border-radius: 5px; color: var(--fg); outline: none;
+}
+.sku-tbl input:hover { border-color: var(--bdr); background: var(--surf2); }
+.sku-tbl input:focus { border-color: var(--acc); background: var(--surf); box-shadow: 0 0 0 2px var(--acc-s); }
+.sku-tbl select {
+  font-size: 12px; padding: 3px 5px; width: auto;
+  background: transparent; border: 1.5px solid transparent; border-radius: 5px;
+}
+.sku-tbl select:hover { border-color: var(--bdr); background: var(--surf2); }
+
+.del-btn {
+  width: 26px; height: 26px; border-radius: 5px;
+  border: 1.5px solid var(--bdr); background: var(--surf2);
+  color: var(--fg3); cursor: pointer; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 13px;
+  transition: all .15s;
+}
+.del-btn:hover { border-color: var(--risk); background: var(--risk-s); color: var(--risk); }
+
+.add-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 11px 16px 14px;
+  padding: 7px 16px; border-radius: 7px;
+  border: 1.5px dashed var(--acc); background: var(--acc-s);
+  color: var(--acc); font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: var(--sans);
+  transition: all .15s;
+}
+.add-btn:hover { background: var(--acc); color: #fff; border-style: solid; }
+
+/* ── Results table ──────────────────────────────────────────── */
+.res-tbl { width: 100%; min-width: 900px; border-collapse: collapse; }
+.res-tbl th {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .06em; font-weight: 700;
+  color: var(--fg3); background: var(--surf2);
+  padding: 7px 11px; text-align: left;
+  border-bottom: 1px solid var(--bdr); white-space: nowrap;
+}
+.res-tbl td {
+  padding: 8px 11px; border-bottom: 1px solid var(--bdr2);
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 13px; vertical-align: middle;
+}
+.res-tbl td.t-name { font-family: var(--sans); font-weight: 500; }
+.res-tbl tr:last-child td { border-bottom: none; }
+.res-tbl tr.r-tight td { background: var(--warn-mid); }
+.res-tbl tr.r-risk  td { background: var(--risk-mid); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 99px;
+  font-size: 11px; font-weight: 700; letter-spacing: .03em;
+  font-family: var(--sans); white-space: nowrap;
+}
+.pill.ok   { background: var(--ok-s);   color: var(--ok);   }
+.pill.cvd  { background: var(--surf2);  color: var(--fg3);  }
+.pill.tight{ background: var(--warn-s); color: var(--warn); }
+.pill.bad  { background: var(--risk-s); color: var(--risk); }
+
+/* ── Bar chart ──────────────────────────────────────────────── */
+.chart-sec { padding: 16px; border-top: 1px solid var(--bdr); }
+.chart-ttl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--fg2); margin-bottom: 12px; }
+.bars { display: flex; flex-direction: column; gap: 7px; }
+.bar-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bar-name {
+  font-size: 11px; color: var(--fg2); text-align: right;
+  flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bar-track {
+  flex: 1; height: 20px; background: var(--surf2);
+  border-radius: 4px; overflow: hidden; position: relative; min-width: 0;
+}
+.bar-fill {
+  height: 100%; border-radius: 4px;
+  transition: width .5s cubic-bezier(.4,0,.2,1);
+  display: flex; align-items: center; padding-left: 8px;
+}
+.bar-lbl  { font-family: var(--mono); font-size: 10px; color: rgba(255,255,255,.9); white-space: nowrap; }
+.bar-out  { font-family: var(--mono); font-size: 10px; color: var(--fg3); padding-left: 6px; line-height: 20px; }
+
+/* ── Actions ────────────────────────────────────────────────── */
+.acts { display: flex; flex-direction: column; gap: 10px; }
+.act {
+  display: flex; gap: 12px; padding: 12px 14px;
+  border-radius: 8px; border: 1.5px solid var(--bdr);
+  align-items: flex-start;
+}
+.act.ok   { border-color: var(--ok);   background: var(--ok-s);   }
+.act.warn { border-color: var(--warn); background: var(--warn-s); }
+.act.risk { border-color: var(--risk); background: var(--risk-s); }
+.act-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.act-body h4 { font-size: 13px; font-weight: 600; color: var(--fg); }
+.act-body p  { font-size: 12px; color: var(--fg2); margin-top: 3px; line-height: 1.55; }
+
+/* ── Legend ─────────────────────────────────────────────────── */
+.legend {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--surf2);
+  border-top: 1px solid var(--bdr);
+  font-size: 11px; color: var(--fg2);
+}
+.leg-item { display: flex; align-items: center; gap: 5px; }
+.leg-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Footer ─────────────────────────────────────────────────── */
+.pg-footer { font-size: 11px; color: var(--fg3); text-align: center; padding: 22px 0 0; line-height: 1.65; }
+
+@media (max-width: 520px) {
+  .kpi-row  { grid-template-columns: 1fr 1fr; }
+  .pgrid    { grid-template-columns: 1fr 1fr; }
+  .bar-name { width: 90px; }
+}
+</style>
+
+<!-- ─ Header ─────────────────────────────────────────────────── -->
+<header class="pg-header">
+  <div class="hdr-icon">🏭</div>
+  <div class="hdr-text">
+    <h1>Factory Shutdown Impact Calculator</h1>
+    <p>FMCG pre-build planning &amp; feasibility analysis</p>
+  </div>
+</header>
+
+<!-- ─ KPI strip ──────────────────────────────────────────────── -->
+<div class="kpi-row">
+  <div class="kpi" id="kpi0">
+    <div class="kpi-lbl">Effective Shutdown</div>
+    <div class="kpi-num" id="kvEffDays">—</div>
+    <div class="kpi-sub">calendar days</div>
+  </div>
+  <div class="kpi" id="kpi1">
+    <div class="kpi-lbl">Total Pre-Build</div>
+    <div class="kpi-num" id="kvPrebuild">—</div>
+    <div class="kpi-sub">units across all SKUs</div>
+  </div>
+  <div class="kpi" id="kpi2">
+    <div class="kpi-lbl">Prod. Days Required</div>
+    <div class="kpi-num" id="kvProdDays">—</div>
+    <div class="kpi-sub">for pre-build above normal</div>
+  </div>
+  <div class="kpi" id="kpi3">
+    <div class="kpi-lbl">SKUs at Risk</div>
+    <div class="kpi-num" id="kvRisk">—</div>
+    <div class="kpi-sub">of <span id="kvTotal">0</span> total SKUs</div>
+  </div>
+</div>
+
+<!-- ─ Capacity gauge ─────────────────────────────────────────── -->
+<div class="gauge-card">
+  <div class="gauge-hdr">
+    <span class="gauge-title">Pre-Build Capacity Utilisation</span>
+    <span class="gauge-meta" id="gMeta">—</span>
+  </div>
+  <div class="gauge-track">
+    <div class="gauge-fill" id="gFill" style="width:0%"></div>
+  </div>
+  <div class="gauge-ticks"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+</div>
+
+<!-- ─ Timeline ───────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-hd" onclick="tog('tl-bd','tl-ch')">
+    <h2>📅 Shutdown Timeline</h2>
+    <span class="chev open" id="tl-ch">▼</span>
+  </div>
+  <div class="card-bd" id="tl-bd">
+    <div class="tl-wrap">
+      <div class="tl-seg pre"     id="tl-pre"  style="flex:28">Pre-build · 4 wks</div>
+      <div class="tl-seg rdown"   id="tl-rd"   style="flex:3">↓ 3d</div>
+      <div class="tl-seg halt"    id="tl-halt" style="flex:14">SHUTDOWN · 14d</div>
+      <div class="tl-seg rup"     id="tl-ru"   style="flex:3">↑ 3d</div>
+      <div class="tl-seg recover" id="tl-rec"  style="flex:28">Recovery · 4 wks</div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--fg2);">
+      <span><span style="color:var(--acc);">■</span> Pre-build window</span>
+      <span><span style="color:#D97706;">■</span> Ramp-down / Ramp-up</span>
+      <span><span style="color:#C0392B;">■</span> Shutdown (zero output)</span>
+      <span><span style="color:#16803E;">■</span> Recovery production</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─ Parameters ─────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-hd" onclick="tog('pm-bd','pm-ch')">
+    <h2>⚙️ Parameters</h2>
+    <span class="chev open" id="pm-ch">▼</span>
+  </div>
+  <div class="card-bd" id="pm-bd">
+    <div class="pgrid">
+      <div class="fld">
+        <label>Shutdown Start Date</label>
+        <input type="date" id="startDate">
+      </div>
+      <div class="fld">
+        <label>Calendar Shutdown Days</label>
+        <input type="number" id="shutdownDays" value="14" min="1">
+        <span class="fld-hint">Hard stop — zero production output</span>
+      </div>
+      <div class="fld">
+        <label>Ramp-Down Days (before)</label>
+        <input type="number" id="rampDown" value="3" min="0">
+        <span class="fld-hint">WIP clearance, final changeovers</span>
+      </div>
+      <div class="fld">
+        <label>Ramp-Up Days (after)</label>
+        <input type="number" id="rampUp" value="3" min="0">
+        <span class="fld-hint">Trials, reduced first-pass yield</span>
+      </div>
+      <div class="fld">
+        <label>Pre-Build Window (weeks)</label>
+        <input type="number" id="prebuildWeeks" value="4" min="1">
+        <span class="fld-hint">Weeks to build stock before shutdown</span>
+      </div>
+      <div class="fld">
+        <label>Production Days / Week</label>
+        <input type="number" id="prodDaysWk" value="5" min="1" max="7">
+        <span class="fld-hint">Available production days per week</span>
+      </div>
+      <div class="fld">
+        <label>Line Capacity / Day (units)</label>
+        <input type="number" id="lineCap" value="10000" min="1">
+        <span class="fld-hint">Extra capacity above normal demand production</span>
+      </div>
+      <div class="fld">
+        <label>Safety Stock Cover (days)</label>
+        <input type="number" id="safetyDays" value="7" min="0">
+        <span class="fld-hint">Days of cover to restore after restart</span>
+      </div>
+      <div class="fld">
+        <label>Downstream Buffer (days)</label>
+        <input type="number" id="dsBuf" value="14" min="0">
+        <span class="fld-hint">Factory → consumer transit (DC + retail)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─ SKU data ───────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-hd" onclick="tog('sk-bd','sk-ch')">
+    <h2>📦 SKU / Product Data</h2>
+    <span class="badge" id="skuBadge">5 SKUs</span>
+    <span class="chev open" id="sk-ch">▼</span>
+  </div>
+  <div class="card-bd hide" id="sk-bd" style="padding:0">
+    <div class="tbl-scroll">
+      <table class="sku-tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>SKU / Product Name</th>
+            <th>Avg Daily<br>Demand (units)</th>
+            <th>Current Stock<br>(units)</th>
+            <th>Shelf Life<br>(days)</th>
+            <th title="1.0 = normal. 1.2 = 20% higher demand during this period (promo/seasonal uplift)">Demand<br>Multiplier</th>
+            <th title="Units available from co-packer or sister plant during the shutdown period">Alt. Supply<br>(units)</th>
+            <th>ABC</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="skuBody"></tbody>
+      </table>
+    </div>
+    <button class="add-btn" onclick="addSku()">＋ Add SKU</button>
+  </div>
+</div>
+
+<!-- ─ Analysis results ───────────────────────────────────────── -->
+<div class="card">
+  <div class="card-hd" onclick="tog('rs-bd','rs-ch')">
+    <h2>📊 Analysis Results</h2>
+    <span class="chev open" id="rs-ch">▼</span>
+  </div>
+  <div class="card-bd hide" id="rs-bd" style="padding:0">
+    <div class="tbl-scroll">
+      <table class="res-tbl">
+        <thead>
+          <tr>
+            <th>SKU [ABC]</th>
+            <th>Eff. Days<br>to Cover</th>
+            <th>Demand to<br>Cover (units)</th>
+            <th>Safety Stock<br>(units)</th>
+            <th>Current<br>Stock</th>
+            <th>Alt.<br>Supply</th>
+            <th>Pre-Build<br>Needed</th>
+            <th>Shelf Life<br>Required</th>
+            <th>Shelf Life<br>Available</th>
+            <th>Margin</th>
+            <th>Status</th>
+            <th style="min-width:190px;">Recommended Action</th>
+          </tr>
+        </thead>
+        <tbody id="resBody"></tbody>
+      </table>
+    </div>
+
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:var(--ok)"></div> Ready — pre-build feasible</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--fg3)"></div> Covered — existing stock sufficient</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--warn)"></div> Tight — shelf margin &lt; 14 days</div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--risk)"></div> Infeasible — shelf life too short</div>
+    </div>
+
+    <div class="chart-sec">
+      <div class="chart-ttl">Pre-Build Volume by SKU</div>
+      <div class="bars" id="barChart"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─ Action plan ────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-hd" onclick="tog('ac-bd','ac-ch')">
+    <h2>✅ Action Plan</h2>
+    <span class="chev open" id="ac-ch">▼</span>
+  </div>
+  <div class="card-bd hide" id="ac-bd">
+    <div class="acts" id="actList"></div>
+  </div>
+</div>
+
+<div class="pg-footer">
+  Shelf life check assumes goods produced at the start of the pre-build window. Demand to cover = adjusted daily demand × (ramp-down + shutdown + ramp-up) days.<br>Safety stock target restores post-restart. All figures are planning estimates — validate against actual line schedules and confirmed shelf-life data.
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────
+let skus = [
+  { id:1, name:'Product A – Standard',   demand:500,  stock:3500, shelf:180, mult:1.0, alt:0,    abc:'A' },
+  { id:2, name:'Product B – Short Life', demand:200,  stock:1200, shelf:60,  mult:1.2, alt:0,    abc:'B' },
+  { id:3, name:'Product C – Co-packer',  demand:1000, stock:5000, shelf:365, mult:1.0, alt:2000, abc:'A' },
+  { id:4, name:'Product D – Fast Mover', demand:800,  stock:4000, shelf:90,  mult:1.0, alt:0,    abc:'A' },
+  { id:5, name:'Product E – C-SKU',      demand:50,   stock:800,  shelf:365, mult:1.0, alt:0,    abc:'C' },
+];
+let nxtId = 6;
+
+// ── Helpers ──────────────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const nv = id => parseFloat($(id)?.value) || 0;
+const fmt  = n => n.toLocaleString('en-US', { maximumFractionDigits:0 });
+const fmt1 = n => n.toFixed(1);
+const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+// ── Core calc ────────────────────────────────────────────────────
+function calcSku(s) {
+  const shut  = nv('shutdownDays');
+  const rd    = nv('rampDown');
+  const ru    = nv('rampUp');
+  const pbwk  = nv('prebuildWeeks');
+  const sfDys = nv('safetyDays');
+  const ds    = nv('dsBuf');
+
+  const effDays   = rd + shut + ru;
+  const adjDmd    = s.demand * s.mult;
+  const dmdCover  = adjDmd * effDays;
+  const sfStock   = adjDmd * sfDys;
+  const pbNeeded  = Math.max(0, dmdCover + sfStock - s.stock - s.alt);
+
+  // Shelf life check: earliest production = now (start of pre-build window)
+  // Must survive: pbwk × 7 (storage) + effDays (demand window) + ds (downstream)
+  const shelfReq  = pbwk * 7 + effDays + ds;
+  const shelfOk   = s.shelf >= shelfReq;
+  const margin    = s.shelf - shelfReq;
+
+  let status;
+  if (pbNeeded === 0)    status = 'COVERED';
+  else if (!shelfOk)     status = 'INFEASIBLE';
+  else if (margin < 14)  status = 'TIGHT';
+  else                   status = 'OK';
+
+  let action;
+  switch(status) {
+    case 'COVERED':    action = 'No pre-build needed. Confirm stock levels weekly and monitor for demand spikes.'; break;
+    case 'OK':         action = `Pre-build ${fmt(Math.round(pbNeeded))} units spread across the ${pbwk}-week pre-build window. Enforce FIFO rotation.`; break;
+    case 'TIGHT':      action = `Pre-build ${fmt(Math.round(pbNeeded))} units — shelf margin only +${Math.round(margin)}d. Delay production start or shorten storage time. Strict FIFO essential.`; break;
+    case 'INFEASIBLE': action = 'Options: (1) Source from co-packer/sister plant, (2) start pre-build closer to shutdown date, (3) accept planned stockout with commercial sign-off, (4) explore shelf-life extension.'; break;
+  }
+  return { effDays, adjDmd, dmdCover, sfStock, pbNeeded, shelfReq, shelfOk, margin, status, action };
+}
+
+// ── Master render ────────────────────────────────────────────────
+function render() {
+  const results = skus.map(s => ({ s, c: calcSku(s) }));
+  renderKpis(results);
+  renderTimeline();
+  renderSkuTable();
+  renderResults(results);
+  renderBars(results);
+  renderActions(results);
+}
+
+// ── KPIs & gauge ─────────────────────────────────────────────────
+function renderKpis(results) {
+  const shut  = nv('shutdownDays'), rd = nv('rampDown'), ru = nv('rampUp');
+  const pbwk  = nv('prebuildWeeks'), pdwk = nv('prodDaysWk'), cap = nv('lineCap');
+  const eff   = rd + shut + ru;
+  const total = results.reduce((a, r) => a + r.c.pbNeeded, 0);
+  const dReq  = cap > 0 ? total / cap : 0;
+  const dAvail= pbwk * pdwk;
+  const pct   = dAvail > 0 ? dReq / dAvail : 0;
+  const nRisk = results.filter(r => ['INFEASIBLE','TIGHT'].includes(r.c.status)).length;
+  const nBad  = results.filter(r => r.c.status === 'INFEASIBLE').length;
+
+  $('kvEffDays').textContent  = eff;
+  $('kvPrebuild').textContent = fmt(Math.round(total));
+  $('kvProdDays').textContent = fmt1(dReq);
+  $('kvRisk').textContent     = nRisk;
+  $('kvTotal').textContent    = skus.length;
+
+  const prodCls = pct <= .85 ? 'ok' : pct <= 1 ? 'warn' : 'risk';
+  $('kvProdDays').className = 'kpi-num ' + prodCls;
+  $('kpi2').className = 'kpi ' + prodCls;
+
+  const riskCls = nRisk === 0 ? '' : nBad > 0 ? 'risk' : 'warn';
+  $('kvRisk').className = 'kpi-num ' + riskCls;
+  $('kpi3').className   = 'kpi ' + riskCls;
+
+  // Gauge
+  const gFill = $('gFill');
+  gFill.style.width = Math.min(pct * 100, 100) + '%';
+  gFill.style.background = pct <= .85 ? 'var(--ok)' : pct <= 1 ? 'var(--warn)' : 'var(--risk)';
+  $('gMeta').textContent = `${fmt1(dReq)} days required · ${fmt1(dAvail)} days available · ${Math.round(pct * 100)}% utilised`;
+}
+
+// ── Timeline ──────────────────────────────────────────────────────
+function renderTimeline() {
+  const pbwk = nv('prebuildWeeks'), rd = nv('rampDown') || .1;
+  const shut = nv('shutdownDays'), ru = nv('rampUp') || .1;
+  const rec  = nv('prebuildWeeks');
+  const pre  = pbwk * 7, recD = rec * 7;
+  const tot  = pre + rd + shut + ru + recD;
+
+  $('tl-pre').style.flex  = pre  / tot;
+  $('tl-rd').style.flex   = rd   / tot;
+  $('tl-halt').style.flex = shut / tot;
+  $('tl-ru').style.flex   = ru   / tot;
+  $('tl-rec').style.flex  = recD / tot;
+
+  $('tl-pre').textContent  = `Pre-build · ${pbwk} wks`;
+  $('tl-rd').textContent   = nv('rampDown') > 0 ? `↓ ${nv('rampDown')}d` : '';
+  $('tl-halt').textContent = `SHUTDOWN · ${shut}d`;
+  $('tl-ru').textContent   = nv('rampUp') > 0 ? `↑ ${nv('rampUp')}d` : '';
+  $('tl-rec').textContent  = `Recovery · ${rec} wks`;
+}
+
+// ── SKU table ─────────────────────────────────────────────────────
+function renderSkuTable() {
+  $('skuBadge').textContent = `${skus.length} SKU${skus.length !== 1 ? 's' : ''}`;
+  $('skuBody').innerHTML = skus.map((s, i) => `
+    <tr>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--fg3);">${i+1}</td>
+      <td><input type="text"   value="${esc(s.name)}" oninput="set(${s.id},'name',this.value)" style="min-width:155px;" placeholder="Product name"></td>
+      <td><input type="number" value="${s.demand}"    oninput="set(${s.id},'demand',+this.value)" min="0"></td>
+      <td><input type="number" value="${s.stock}"     oninput="set(${s.id},'stock',+this.value)"  min="0"></td>
+      <td><input type="number" value="${s.shelf}"     oninput="set(${s.id},'shelf',+this.value)"  min="1"></td>
+      <td><input type="number" value="${s.mult}"      oninput="set(${s.id},'mult',+this.value)"   min="0.1" step="0.1" style="max-width:58px;"></td>
+      <td><input type="number" value="${s.alt}"       oninput="set(${s.id},'alt',+this.value)"    min="0"></td>
+      <td>
+        <select onchange="set(${s.id},'abc',this.value)">
+          <option ${s.abc==='A'?'selected':''}>A</option>
+          <option ${s.abc==='B'?'selected':''}>B</option>
+          <option ${s.abc==='C'?'selected':''}>C</option>
+        </select>
+      </td>
+      <td><button class="del-btn" onclick="delSku(${s.id})" title="Remove SKU">✕</button></td>
+    </tr>
+  `).join('');
+}
+
+// ── Results table ─────────────────────────────────────────────────
+function renderResults(results) {
+  const ST = {
+    OK:         { cls:'ok',   lbl:'✓ Pre-build OK', row:'' },
+    COVERED:    { cls:'cvd',  lbl:'✓ Covered',      row:'' },
+    TIGHT:      { cls:'tight',lbl:'⚠ Tight',        row:'r-tight' },
+    INFEASIBLE: { cls:'bad',  lbl:'✕ Infeasible',   row:'r-risk' },
+  };
+  $('resBody').innerHTML = results.map(({s, c}) => {
+    const st = ST[c.status];
+    const mc = c.margin < 0 ? 'color:var(--risk)' : c.margin < 14 ? 'color:var(--warn)' : 'color:var(--ok)';
+    const ms = c.margin >= 0 ? '+' : '';
+    return `
+    <tr class="${st.row}">
+      <td class="t-name">${esc(s.name)} <span style="color:var(--fg3);font-size:10px;">[${s.abc}]</span></td>
+      <td>${c.effDays}</td>
+      <td>${fmt(Math.round(c.dmdCover))}</td>
+      <td>${fmt(Math.round(c.sfStock))}</td>
+      <td>${fmt(s.stock)}</td>
+      <td>${fmt(s.alt)}</td>
+      <td style="font-weight:700;">${fmt(Math.round(c.pbNeeded))}</td>
+      <td>${Math.round(c.shelfReq)} d</td>
+      <td>${s.shelf} d</td>
+      <td style="${mc};font-weight:700;">${ms}${Math.round(c.margin)} d</td>
+      <td><span class="pill ${st.cls}">${st.lbl}</span></td>
+      <td style="font-family:var(--sans);font-size:11px;color:var(--fg2);max-width:195px;white-space:normal;line-height:1.45;">${c.action}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Bar chart ─────────────────────────────────────────────────────
+function renderBars(results) {
+  const mx = Math.max(...results.map(r => r.c.pbNeeded), 1);
+  const CLR = { OK:'var(--ok)', COVERED:'var(--fg3)', TIGHT:'var(--warn)', INFEASIBLE:'var(--risk)' };
+  const NW  = Math.min(140, Math.floor(window.innerWidth * 0.28));
+
+  $('barChart').innerHTML = results.map(({s, c}) => {
+    const pct = (c.pbNeeded / mx) * 100;
+    const clr = CLR[c.status];
+    const lbl = c.pbNeeded > 0 ? fmt(Math.round(c.pbNeeded)) : '';
+    const inside = pct > 15;
+    return `
+    <div class="bar-row">
+      <div class="bar-name" style="width:${NW}px;" title="${esc(s.name)}">${esc(s.name)}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct.toFixed(1)}%;background:${clr};min-width:${c.pbNeeded>0?3:0}px;">
+          ${inside ? `<span class="bar-lbl">${lbl}</span>` : ''}
+        </div>
+        ${!inside && lbl ? `<span class="bar-out">${lbl}</span>` : ''}
+        ${!lbl ? `<span class="bar-out">0 — covered</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Action plan ───────────────────────────────────────────────────
+function renderActions(results) {
+  const cap   = nv('lineCap'),  pbwk = nv('prebuildWeeks'), pdwk = nv('prodDaysWk');
+  const total = results.reduce((a, r) => a + r.c.pbNeeded, 0);
+  const dReq  = cap > 0 ? total / cap : 0;
+  const dAvail= pbwk * pdwk;
+  const pct   = dAvail > 0 ? dReq / dAvail : 0;
+
+  const inf  = results.filter(r => r.c.status === 'INFEASIBLE');
+  const tght = results.filter(r => r.c.status === 'TIGHT');
+  const ok   = results.filter(r => r.c.status === 'OK');
+  const cvd  = results.filter(r => r.c.status === 'COVERED');
+
+  const acts = [];
+
+  if (ok.length)
+    acts.push({ cls:'ok', icon:'✅',
+      h4: `${ok.length} SKU${ok.length>1?'s':''}: Pre-build confirmed feasible`,
+      p:  ok.map(r=>`<strong>${esc(r.s.name)}</strong>: ${fmt(Math.round(r.c.pbNeeded))} units`).join(' &middot; ') + '. Schedule production orders across the pre-build window.' });
+
+  if (cvd.length)
+    acts.push({ cls:'ok', icon:'🟢',
+      h4: `${cvd.length} SKU${cvd.length>1?'s':''}: No pre-build required`,
+      p:  cvd.map(r => esc(r.s.name)).join(', ') + '. Existing stock covers the full shutdown window including safety stock. Verify stock weekly.' });
+
+  if (tght.length)
+    acts.push({ cls:'warn', icon:'⚠️',
+      h4: `${tght.length} SKU${tght.length>1?'s':''}: Shelf margin tight — monitor closely`,
+      p:  tght.map(r=>`<strong>${esc(r.s.name)}</strong>: +${Math.round(r.c.margin)}d margin`).join(' &middot; ') + '. Options: delay production start to reduce storage time; enforce strict FIFO throughout supply chain; review downstream buffer assumption with DC and retail teams.' });
+
+  if (inf.length)
+    acts.push({ cls:'risk', icon:'🔴',
+      h4: `${inf.length} SKU${inf.length>1?'s':''}: Infeasible — shelf life too short to pre-build`,
+      p:  inf.map(r=>esc(r.s.name)).join(', ') + '. <strong>Required actions:</strong> (1) Source from a qualified co-packer or sister plant during the shutdown period. (2) Shorten pre-build window — produce closer to the shutdown date to reduce storage time. (3) Accept a planned stockout: agree with the commercial team, notify key accounts in advance, and plan recovery production. (4) Explore a shelf-life extension through formulation or packaging changes.' });
+
+  if (dReq > dAvail)
+    acts.push({ cls:'risk', icon:'🏭',
+      h4: `Capacity gap: ${fmt1(dReq - dAvail)} production day(s) short`,
+      p:  `Required: <strong>${fmt1(dReq)} days</strong> — Available: <strong>${fmt1(dAvail)} days</strong>. Actions: extend the pre-build window; add overtime or weekend shifts; prioritise A-SKUs and source B/C-SKUs from a co-packer; reduce safety stock targets for low-risk slow movers.` });
+  else if (total > 0)
+    acts.push({ cls:'ok', icon:'🏭',
+      h4: `Capacity sufficient — ${fmt1(dAvail - dReq)} production day(s) spare`,
+      p:  `${fmt(Math.round(total))} total pre-build units require <strong>${fmt1(dReq)} days</strong> out of <strong>${fmt1(dAvail)} available</strong> (${Math.round(pct*100)}% utilised). Buffer is adequate to absorb minor schedule changes.` });
+
+  if (acts.length === 0) {
+    $('actList').innerHTML = '<p style="color:var(--fg3);font-size:13px;">Add SKU data above to generate action recommendations.</p>';
+    return;
+  }
+  $('actList').innerHTML = acts.map(a => `
+    <div class="act ${a.cls}">
+      <div class="act-icon">${a.icon}</div>
+      <div class="act-body"><h4>${a.h4}</h4><p>${a.p}</p></div>
+    </div>`).join('');
+}
+
+// ── SKU CRUD ─────────────────────────────────────────────────────
+function set(id, field, val) {
+  const s = skus.find(s => s.id === id);
+  if (s) { s[field] = val; render(); }
+}
+function addSku() {
+  skus.push({ id:nxtId++, name:`New Product ${skus.length+1}`, demand:100, stock:700, shelf:180, mult:1.0, alt:0, abc:'B' });
+  render();
+  const bd = $('sk-bd');
+  if (bd.classList.contains('hide')) tog('sk-bd','sk-ch');
+}
+function delSku(id) {
+  if (skus.length <= 1) return;
+  skus = skus.filter(s => s.id !== id);
+  render();
+}
+
+// ── Accordion ─────────────────────────────────────────────────────
+function tog(bdId, chId) {
+  const bd   = $(bdId);
+  const closed = bd.classList.toggle('hide');
+  $(chId).classList.toggle('open', !closed);
+}
+
+// ── Wire param inputs ─────────────────────────────────────────────
+['shutdownDays','rampDown','rampUp','prebuildWeeks','prodDaysWk','lineCap','safetyDays','dsBuf','startDate']
+  .forEach(id => $(id)?.addEventListener('input', render));
+
+// ── Default date (30 days out) ────────────────────────────────────
+(function(){
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  $('startDate').value = d.toISOString().slice(0,10);
+})();
+
+// ── Init ──────────────────────────────────────────────────────────
+render();
+</script>
