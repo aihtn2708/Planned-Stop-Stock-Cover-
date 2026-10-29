@@ -1,8 +1,8 @@
 # FMCG Factory Planned Stop Impact Calculator
 
-> **Plan your pre-build strategy before a factory planned stop — in seconds.**
+Plan your pre-build strategy before a factory planned stop, quickly and accurately.
 
-A Python-powered tool (Flask API + CLI) with a self-contained interactive HTML calculator for FMCG supply-chain planners. Given a set of planned stop parameters and per-SKU data, it instantly computes:
+A Python-powered tool with a Flask API, CLI, and a self-contained interactive HTML calculator for FMCG supply-chain planners. Given a set of planned stop parameters and per-SKU data, it computes:
 
 - **Pre-build quantities** for each SKU
 - **Shelf-life feasibility** (INFEASIBLE / TIGHT / OK / COVERED)
@@ -13,9 +13,9 @@ A Python-powered tool (Flask API + CLI) with a self-contained interactive HTML c
 
 ## Quick Start
 
-### 1 — Interactive Web Calculator (no server needed)
+### 1. Interactive Web Calculator (no server needed)
 
-Open `static/index.html` directly in any browser — no server, no install:
+Open `static/index.html` directly in any browser, no install required:
 
 ```bash
 open static/index.html          # macOS
@@ -23,13 +23,13 @@ xdg-open static/index.html      # Linux
 start static/index.html         # Windows
 ```
 
-Edit parameters and SKU data live; results update instantly. Use the **"Start API Mode"** button to connect the UI to a running Flask server.
+Edit parameters and SKU data live and results update instantly. Use the **"Start API Mode"** button to connect the UI to a running Flask server.
 
 ---
 
-### 2 — Python CLI
+### 2. Python CLI
 
-**Requires Python 3.10+** (no extra dependencies for the core logic).
+Requires Python 3.10+ with no extra dependencies for the core logic.
 
 ```bash
 # Run with built-in sample data
@@ -53,7 +53,7 @@ python cli.py --generate-csv my_skus.csv
 
 ---
 
-### 3 — Flask Web API
+### 3. Flask Web API
 
 ```bash
 # Install dependencies
@@ -61,7 +61,7 @@ pip install -r requirements.txt
 
 # Start the server
 python app.py
-# → http://localhost:5000
+# http://localhost:5000
 ```
 
 The server serves the HTML calculator at `/` and exposes a REST endpoint at `/api/calculate`.
@@ -78,14 +78,14 @@ id,name,daily_demand,current_stock,shelf_life_days,demand_multiplier,alt_supply,
 
 | Column | Type | Required | Description |
 |---|---|---|---|
-| `id` | int | ✅ | Unique SKU identifier |
-| `name` | str | ✅ | Product name |
-| `daily_demand` | float | ✅ | Average units sold per calendar day |
-| `current_stock` | float | ✅ | Units currently at factory / DC |
-| `shelf_life_days` | int | ✅ | Days of remaining usable shelf life |
-| `demand_multiplier` | float | ☐ | Seasonal/promo uplift (default `1.0`) |
-| `alt_supply` | float | ☐ | Units from co-packer/sister plant (default `0`) |
-| `abc_class` | str | ☐ | `A`, `B`, or `C` (default `B`) |
+| `id` | int | Yes | Unique SKU identifier |
+| `name` | str | Yes | Product name |
+| `daily_demand` | float | Yes | Average units sold per calendar day |
+| `current_stock` | float | Yes | Units currently at factory or DC |
+| `shelf_life_days` | int | Yes | Days of remaining usable shelf life |
+| `demand_multiplier` | float | No | Seasonal or promo uplift (default 1.0) |
+| `alt_supply` | float | No | Units from co-packer or sister plant (default 0) |
+| `abc_class` | str | No | A, B, or C (default B) |
 
 See `data/skus_sample.csv` for a worked example.
 
@@ -95,16 +95,16 @@ See `data/skus_sample.csv` for a worked example.
 
 | Parameter | CLI flag | Default | Description |
 |---|---|---|---|
-| `stop_days` | `--stop-days` | 14 | Hard-stop calendar days (zero output) |
+| `stop_days` | `--stop-days` | 14 | Hard-stop calendar days with zero output |
 | `ramp_down_days` | `--ramp-down-days` | 3 | Days before the stop at reduced output |
 | `ramp_up_days` | `--ramp-up-days` | 3 | Days after restart before full yield |
 | `prebuild_weeks` | `--prebuild-weeks` | 4 | Weeks available to build stock ahead |
 | `prod_days_per_week` | `--prod-days-per-week` | 5 | Production days per week in the pre-build window |
-| `line_capacity_per_day` | `--line-capacity-per-day` | 10000 | *Incremental* units/day above normal demand production |
+| `line_capacity_per_day` | `--line-capacity-per-day` | 10000 | Incremental units per day above normal demand production |
 | `safety_stock_days` | `--safety-stock-days` | 7 | Days of demand cover to hold after restart |
-| `downstream_buffer_days` | `--downstream-buffer` | 14 | Transit days factory gate → consumer (DC + retail) |
+| `downstream_buffer_days` | `--downstream-buffer` | 14 | Transit days from factory gate to consumer (DC + retail) |
 
-> **Effective Stop Days** = `ramp_down_days` + `stop_days` + `ramp_up_days`
+**Effective Stop Days** = `ramp_down_days` + `stop_days` + `ramp_up_days`
 
 ---
 
@@ -112,41 +112,41 @@ See `data/skus_sample.csv` for a worked example.
 
 | Status | Meaning | Action |
 |---|---|---|
-| 🟢 **COVERED** | Current stock sufficient — no pre-build needed | Monitor weekly in run-up |
-| ✅ **OK** | Pre-build feasible; shelf life has comfortable headroom | Spread production across the window; enforce FIFO |
-| ⚠️ **TIGHT** | Shelf life feasible but margin < 14 days | Delay production start; strict FIFO mandatory |
-| 🔴 **INFEASIBLE** | Shelf life too short to pre-build from week 0 | Source from co-packer, or accept planned stockout with sign-off |
+| 🟢 **COVERED** | Current stock is sufficient, no pre-build needed | Monitor weekly in the run-up |
+| ✅ **OK** | Pre-build is feasible and shelf life has comfortable headroom | Spread production across the window and enforce FIFO |
+| ⚠️ **TIGHT** | Shelf life is feasible but the margin is under 14 days | Delay production start and apply strict FIFO |
+| 🔴 **INFEASIBLE** | Shelf life is too short to pre-build from week 0 | Source from a co-packer or accept a planned stockout with sign-off |
 
 ---
 
 ## Key Formulas
 
 ```
-Effective Stop Days = ramp_down + stop_days + ramp_up
+Effective Stop Days     = ramp_down + stop_days + ramp_up
 
-Demand to Cover = daily_demand × demand_multiplier × effective_days
+Demand to Cover         = daily_demand x demand_multiplier x effective_days
 
-Pre-Build Needed = max(0,  demand_to_cover
-                          + safety_stock_days × adjusted_demand
-                          − current_stock
-                          − alt_supply)
+Pre-Build Needed        = max(0, demand_to_cover
+                               + safety_stock_days x adjusted_demand
+                               - current_stock
+                               - alt_supply)
 
-Shelf Life Required = prebuild_weeks × 7
-                    + effective_stop_days
-                    + downstream_buffer_days
+Shelf Life Required     = prebuild_weeks x 7
+                        + effective_stop_days
+                        + downstream_buffer_days
 
-Production Days Required = total_prebuild_units / line_capacity_per_day
+Production Days Needed  = total_prebuild_units / line_capacity_per_day
 
-Capacity Utilisation % = prod_days_required / prod_days_available × 100
+Capacity Utilisation %  = prod_days_required / prod_days_available x 100
 ```
 
 ---
 
 ## REST API Reference
 
-**Base URL:** `http://localhost:5000`
+Base URL: `http://localhost:5000`
 
-### `GET /api/health`
+### GET /api/health
 
 ```json
 { "status": "ok" }
@@ -154,7 +154,7 @@ Capacity Utilisation % = prod_days_required / prod_days_available × 100
 
 ---
 
-### `POST /api/calculate`
+### POST /api/calculate
 
 Calculate pre-build requirements for a list of SKUs.
 
@@ -225,12 +225,12 @@ Calculate pre-build requirements for a list of SKUs.
 ## Project Structure
 
 ```
-factory-shutdown-calculator/
-├── calculator.py         # Core logic — pure Python, no external deps
-├── app.py                # Flask web server + REST API
+Planned-Stop-Stock-Cover-/
+├── calculator.py         # Core business logic, pure Python with no external dependencies
+├── app.py                # Flask web server and REST API
 ├── cli.py                # Command-line interface
-├── requirements.txt      # Flask + flask-cors
-├── requirements-dev.txt  # + pytest + pytest-cov
+├── requirements.txt      # Flask and flask-cors
+├── requirements-dev.txt  # Adds pytest and pytest-cov
 ├── .gitignore
 │
 ├── static/
@@ -241,7 +241,7 @@ factory-shutdown-calculator/
 │
 └── tests/
     ├── __init__.py
-    └── test_calculator.py  # 28 pytest tests
+    └── test_calculator.py  # 28 unit tests
 ```
 
 ---
@@ -266,14 +266,14 @@ Expected output: **28 passed**.
 
 | Scenario | How to use |
 |---|---|
-| Quick planning check | Open `static/index.html`; adjust sliders; read KPIs |
-| Batch analysis (many SKUs) | `python cli.py --skus your_data.csv --output results.csv` |
-| Integrate into existing tools | `POST /api/calculate` from your planning system |
-| Sensitivity testing | Change `--stop-days`, `--prebuild-weeks`, etc. on the CLI |
-| Import as a library | `from calculator import calculate_all, StopParams, SkuInput` |
+| Quick planning check | Open `static/index.html`, adjust parameters, read KPIs |
+| Batch analysis across many SKUs | `python cli.py --skus your_data.csv --output results.csv` |
+| Integrate into an existing planning tool | POST to `/api/calculate` from your system |
+| Sensitivity testing | Change `--stop-days`, `--prebuild-weeks` and other flags on the CLI |
+| Import as a Python library | `from calculator import calculate_all, StopParams, SkuInput` |
 
 ---
 
 ## License
 
-MIT — free to use, modify, and distribute.
+MIT, free to use, modify, and distribute.
