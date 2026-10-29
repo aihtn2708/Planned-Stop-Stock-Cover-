@@ -1,5 +1,5 @@
 """
-Tests for calculator.py — core FMCG shutdown impact logic.
+Tests for calculator.py — core FMCG planned stop impact logic.
 
 Run:
     pytest tests/ -v
@@ -8,7 +8,7 @@ Run:
 
 import pytest
 from calculator import (
-    ShutdownParams,
+    StopParams,
     SkuInput,
     calculate_sku,
     calculate_all,
@@ -21,8 +21,8 @@ from calculator import (
 
 @pytest.fixture
 def default_params():
-    return ShutdownParams(
-        shutdown_days=14,
+    return StopParams(
+        stop_days=14,
         ramp_down_days=3,
         ramp_up_days=3,
         prebuild_weeks=4,
@@ -67,11 +67,11 @@ def tight_sku():
                     demand_multiplier=1.0, alt_supply=0, abc_class="B")
 
 
-# ── ShutdownParams properties ─────────────────────────────────────────────────
+# ── StopParams properties ─────────────────────────────────────────────────────
 
-class TestShutdownParams:
+class TestStopParams:
     def test_effective_days(self, default_params):
-        assert default_params.effective_shutdown_days == 3 + 14 + 3
+        assert default_params.effective_stop_days == 3 + 14 + 3
 
     def test_available_production_days(self, default_params):
         assert default_params.available_production_days == 4 * 5
@@ -81,8 +81,8 @@ class TestShutdownParams:
         assert default_params.shelf_life_required_base == 28 + 20 + 14
 
     def test_zero_ramp(self):
-        p = ShutdownParams(shutdown_days=10, ramp_down_days=0, ramp_up_days=0)
-        assert p.effective_shutdown_days == 10
+        p = StopParams(stop_days=10, ramp_down_days=0, ramp_up_days=0)
+        assert p.effective_stop_days == 10
 
 
 # ── calculate_sku: status classification ─────────────────────────────────────
@@ -120,11 +120,11 @@ class TestCalculateSkuNumerics:
 
     def test_effective_days_passed_through(self, ok_sku, default_params):
         r = calculate_sku(ok_sku, default_params)
-        assert r.effective_days == default_params.effective_shutdown_days
+        assert r.effective_days == default_params.effective_stop_days
 
     def test_demand_to_cover(self, ok_sku, default_params):
         r = calculate_sku(ok_sku, default_params)
-        expected = ok_sku.daily_demand * default_params.effective_shutdown_days
+        expected = ok_sku.daily_demand * default_params.effective_stop_days
         assert r.demand_to_cover == pytest.approx(expected, rel=1e-6)
 
     def test_demand_multiplier_applied(self, default_params):
@@ -133,7 +133,7 @@ class TestCalculateSkuNumerics:
                        demand_multiplier=1.5, alt_supply=0, abc_class="A")
         r = calculate_sku(sku, default_params)
         assert r.adjusted_daily_demand == 150.0
-        assert r.demand_to_cover == pytest.approx(150 * default_params.effective_shutdown_days)
+        assert r.demand_to_cover == pytest.approx(150 * default_params.effective_stop_days)
 
     def test_alt_supply_reduces_prebuild(self, ok_sku, default_params):
         sku_no_alt = ok_sku
@@ -214,7 +214,6 @@ class TestCalculateAll:
         assert result.capacity_utilisation_pct == pytest.approx(implied, abs=0.1)
 
     def test_capacity_ok_flag(self, default_params):
-        # Force a tiny demand so capacity is definitely sufficient
         skus = [SkuInput(id=1, name="Tiny", daily_demand=1, current_stock=0,
                          shelf_life_days=365, abc_class="C")]
         result = calculate_all(skus, default_params)
@@ -240,7 +239,7 @@ class TestCalculateAll:
 class TestEdgeCases:
 
     def test_zero_line_capacity(self):
-        params = ShutdownParams(line_capacity_per_day=0)
+        params = StopParams(line_capacity_per_day=0)
         skus = [SkuInput(id=1, name="X", daily_demand=100, current_stock=0,
                          shelf_life_days=365, abc_class="A")]
         result = calculate_all(skus, params)
@@ -254,7 +253,7 @@ class TestEdgeCases:
         assert r.shelf_margin > 3000
 
     def test_zero_ramp_days(self):
-        params = ShutdownParams(shutdown_days=14, ramp_down_days=0, ramp_up_days=0)
+        params = StopParams(stop_days=14, ramp_down_days=0, ramp_up_days=0)
         sku = SkuInput(id=1, name="Y", daily_demand=200, current_stock=0,
                        shelf_life_days=365, abc_class="B")
         r = calculate_sku(sku, params)

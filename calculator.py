@@ -1,7 +1,7 @@
 """
-factory_shutdown_calculator.calculator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Core calculation logic for FMCG factory shutdown impact analysis.
+factory_stop_calculator.calculator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Core calculation logic for FMCG planned factory stop impact analysis.
 
 This module is pure Python with no external dependencies and can be used
 standalone, via the Flask API (app.py), or via the CLI (cli.py).
@@ -15,20 +15,20 @@ from typing import List, Literal
 # ── Data models ──────────────────────────────────────────────────────────────
 
 @dataclass
-class ShutdownParams:
-    """Parameters that describe the shutdown event and planning constraints."""
+class StopParams:
+    """Parameters that describe the planned factory stop and planning constraints."""
 
-    shutdown_days: int = 14
+    stop_days: int = 14
     """Hard-stop calendar days with zero production output."""
 
     ramp_down_days: int = 3
-    """Days before shutdown with reduced output (WIP clearance, changeovers)."""
+    """Days before the stop with reduced output (WIP clearance, changeovers)."""
 
     ramp_up_days: int = 3
     """Days after restart with reduced yield (line trials, first-pass waste)."""
 
     prebuild_weeks: int = 4
-    """Weeks available to build stock *before* the shutdown begins."""
+    """Weeks available to build stock *before* the planned stop begins."""
 
     prod_days_per_week: int = 5
     """Production days available per week in the pre-build window."""
@@ -43,9 +43,9 @@ class ShutdownParams:
     """Transit time from factory gate to consumer (DC + retail + consumer)."""
 
     @property
-    def effective_shutdown_days(self) -> float:
+    def effective_stop_days(self) -> float:
         """Total days of lost / reduced output including ramp-down and ramp-up."""
-        return self.ramp_down_days + self.shutdown_days + self.ramp_up_days
+        return self.ramp_down_days + self.stop_days + self.ramp_up_days
 
     @property
     def available_production_days(self) -> float:
@@ -55,7 +55,7 @@ class ShutdownParams:
     @property
     def shelf_life_required_base(self) -> float:
         """Minimum shelf life (days) for goods produced at the start of the pre-build window."""
-        return (self.prebuild_weeks * 7) + self.effective_shutdown_days + self.downstream_buffer_days
+        return (self.prebuild_weeks * 7) + self.effective_stop_days + self.downstream_buffer_days
 
 
 StatusType = Literal["OK", "COVERED", "TIGHT", "INFEASIBLE"]
@@ -84,7 +84,7 @@ class SkuInput:
     """Seasonal / promotional uplift factor (1.0 = no change)."""
 
     alt_supply: float = 0.0
-    """Units available from co-packer or sister plant during the shutdown."""
+    """Units available from co-packer or sister plant during the stop."""
 
     abc_class: str = "B"
     """ABC classification (A = high volume, C = low volume)."""
@@ -99,13 +99,13 @@ class SkuResult:
     abc_class: str
 
     effective_days: float
-    """Total days of demand to cover (ramp-down + shutdown + ramp-up)."""
+    """Total days of demand to cover (ramp-down + stop + ramp-up)."""
 
     adjusted_daily_demand: float
     """Daily demand after applying the multiplier."""
 
     demand_to_cover: float
-    """Total units of demand during the effective shutdown period."""
+    """Total units of demand during the effective stop period."""
 
     safety_stock_units: float
     """Safety stock units to hold after restart."""
@@ -139,9 +139,9 @@ class SkuResult:
 
 @dataclass
 class SummaryResult:
-    """Aggregated summary across all SKUs for a given set of shutdown parameters."""
+    """Aggregated summary across all SKUs for a given set of stop parameters."""
 
-    effective_shutdown_days: float
+    effective_stop_days: float
     total_prebuild_units: float
     production_days_required: float
     production_days_available: float
@@ -161,18 +161,18 @@ class SummaryResult:
 
 # ── Calculation functions ────────────────────────────────────────────────────
 
-def calculate_sku(sku: SkuInput, params: ShutdownParams) -> SkuResult:
+def calculate_sku(sku: SkuInput, params: StopParams) -> SkuResult:
     """
     Calculate the pre-build requirement and feasibility for one SKU.
 
     Args:
         sku:    SKU input data (demand, stock, shelf life, etc.)
-        params: Shutdown event parameters
+        params: Planned stop parameters
 
     Returns:
         SkuResult with all derived figures and a status classification.
     """
-    eff = params.effective_shutdown_days
+    eff = params.effective_stop_days
     adj = sku.daily_demand * sku.demand_multiplier
     dmd = adj * eff
     ss  = adj * params.safety_stock_days
@@ -191,7 +191,7 @@ def calculate_sku(sku: SkuInput, params: ShutdownParams) -> SkuResult:
         action = (
             f"Shelf life too short by {abs(margin):.0f}d. "
             "Options: (1) source from co-packer, "
-            "(2) shorten pre-build window / start closer to shutdown, "
+            "(2) shorten pre-build window / start closer to the stop, "
             "(3) accept planned stockout with commercial sign-off, "
             "(4) explore shelf-life extension."
         )
@@ -227,22 +227,22 @@ def calculate_sku(sku: SkuInput, params: ShutdownParams) -> SkuResult:
     )
 
 
-def calculate_all(skus: List[SkuInput], params: ShutdownParams) -> SummaryResult:
+def calculate_all(skus: List[SkuInput], params: StopParams) -> SummaryResult:
     """
     Calculate pre-build requirements for all SKUs and return a full summary.
 
     Args:
         skus:   List of SKU inputs.
-        params: Shutdown event parameters.
+        params: Planned stop parameters.
 
     Returns:
         SummaryResult with per-SKU results and aggregated KPIs.
 
     Example::
 
-        from calculator import ShutdownParams, SkuInput, calculate_all
+        from calculator import StopParams, SkuInput, calculate_all
 
-        params = ShutdownParams(shutdown_days=14, prebuild_weeks=4)
+        params = StopParams(stop_days=14, prebuild_weeks=4)
         skus = [
             SkuInput(id=1, name="Product A", daily_demand=500,
                      current_stock=3500, shelf_life_days=180),
@@ -261,7 +261,7 @@ def calculate_all(skus: List[SkuInput], params: ShutdownParams) -> SummaryResult
     infeasible = sum(1 for r in results if r.status == "INFEASIBLE")
 
     return SummaryResult(
-        effective_shutdown_days=params.effective_shutdown_days,
+        effective_stop_days=params.effective_stop_days,
         total_prebuild_units=round(total_pb, 2),
         production_days_required=round(prod_req, 2),
         production_days_available=prod_avail,

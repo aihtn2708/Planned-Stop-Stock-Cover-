@@ -1,13 +1,13 @@
 """
-factory_shutdown_calculator.cli
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+factory_stop_calculator.cli
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Command-line interface for batch calculation via CSV input.
 
 Usage:
     python cli.py --help
-    python cli.py --skus data/skus.csv
-    python cli.py --skus data/skus.csv --shutdown-days 21 --prebuild-weeks 6
-    python cli.py --skus data/skus.csv --output results.csv
+    python cli.py --skus data/skus_sample.csv
+    python cli.py --skus data/skus_sample.csv --stop-days 21 --prebuild-weeks 6
+    python cli.py --skus data/skus_sample.csv --output results.csv
 
 CSV format (header row required):
     id,name,daily_demand,current_stock,shelf_life_days,demand_multiplier,alt_supply,abc_class
@@ -22,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-from calculator import ShutdownParams, SkuInput, calculate_all
+from calculator import StopParams, SkuInput, calculate_all
 
 
 SAMPLE_CSV = """id,name,daily_demand,current_stock,shelf_life_days,demand_multiplier,alt_supply,abc_class
@@ -85,9 +85,9 @@ def write_results_csv(result, path: Path) -> None:
 def print_summary(result) -> None:
     sep = "─" * 62
     print(f"\n{sep}")
-    print("  FACTORY SHUTDOWN IMPACT — SUMMARY")
+    print("  FACTORY PLANNED STOP IMPACT — SUMMARY")
     print(sep)
-    print(f"  Effective shutdown days : {result.effective_shutdown_days}")
+    print(f"  Effective stop days     : {result.effective_stop_days}")
     print(f"  Total pre-build units   : {result.total_prebuild_units:,.0f}")
     print(f"  Production days req.    : {result.production_days_required:.1f}")
     print(f"  Production days avail.  : {result.production_days_available:.1f}")
@@ -110,7 +110,7 @@ def print_summary(result) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="FMCG Factory Shutdown Impact Calculator — CLI",
+        description="FMCG Factory Planned Stop Impact Calculator — CLI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -123,16 +123,16 @@ def main() -> None:
     g.add_argument("--generate-csv", metavar="PATH", type=Path,
                    help="Write a sample CSV template and exit.")
 
-    # Shutdown params
-    p = parser.add_argument_group("shutdown parameters")
-    p.add_argument("--shutdown-days",         type=int, default=14)
-    p.add_argument("--ramp-down-days",        type=int, default=3)
-    p.add_argument("--ramp-up-days",          type=int, default=3)
-    p.add_argument("--prebuild-weeks",        type=int, default=4)
-    p.add_argument("--prod-days-per-week",    type=int, default=5)
-    p.add_argument("--line-capacity-per-day", type=int, default=10000)
-    p.add_argument("--safety-stock-days",     type=int, default=7)
-    p.add_argument("--downstream-buffer",     type=int, default=14)
+    # Stop parameters
+    p = parser.add_argument_group("planned stop parameters")
+    p.add_argument("--stop-days",             type=int, default=14,    help="Hard-stop calendar days (zero output)")
+    p.add_argument("--ramp-down-days",        type=int, default=3,     help="Days before stop at reduced output")
+    p.add_argument("--ramp-up-days",          type=int, default=3,     help="Days after restart before full yield")
+    p.add_argument("--prebuild-weeks",        type=int, default=4,     help="Weeks available to build stock ahead")
+    p.add_argument("--prod-days-per-week",    type=int, default=5,     help="Production days per week in pre-build window")
+    p.add_argument("--line-capacity-per-day", type=int, default=10000, help="Incremental units/day above normal production")
+    p.add_argument("--safety-stock-days",     type=int, default=7,     help="Days of demand cover to hold after restart")
+    p.add_argument("--downstream-buffer",     type=int, default=14,    help="Transit days factory gate → consumer")
 
     # Output
     parser.add_argument("--output", metavar="CSV", type=Path, default=None,
@@ -173,8 +173,8 @@ def main() -> None:
         print("Error: no valid SKUs loaded.", file=sys.stderr)
         sys.exit(1)
 
-    params = ShutdownParams(
-        shutdown_days=          args.shutdown_days,
+    params = StopParams(
+        stop_days=              args.stop_days,
         ramp_down_days=         args.ramp_down_days,
         ramp_up_days=           args.ramp_up_days,
         prebuild_weeks=         args.prebuild_weeks,

@@ -1,8 +1,8 @@
-# FMCG Factory Shutdown Impact Calculator
+# FMCG Factory Planned Stop Impact Calculator
 
-> **Plan your pre-build strategy before a factory shutdown — in seconds.**
+> **Plan your pre-build strategy before a factory planned stop — in seconds.**
 
-A Python-powered tool (Flask API + CLI) with a self-contained interactive HTML calculator for FMCG supply-chain planners. Given a set of shutdown parameters and per-SKU data, it instantly computes:
+A Python-powered tool (Flask API + CLI) with a self-contained interactive HTML calculator for FMCG supply-chain planners. Given a set of planned stop parameters and per-SKU data, it instantly computes:
 
 - **Pre-build quantities** for each SKU
 - **Shelf-life feasibility** (INFEASIBLE / TIGHT / OK / COVERED)
@@ -41,8 +41,8 @@ python cli.py --skus data/skus_sample.csv
 # Save results to CSV
 python cli.py --skus data/skus_sample.csv --output results.csv
 
-# Override any shutdown parameter
-python cli.py --sample --shutdown-days 21 --prebuild-weeks 6
+# Override any planned stop parameter
+python cli.py --sample --stop-days 21 --prebuild-weeks 6
 
 # Full JSON output (pipe to jq, etc.)
 python cli.py --sample --json | jq '.sku_results[].status'
@@ -91,12 +91,12 @@ See `data/skus_sample.csv` for a worked example.
 
 ---
 
-## Shutdown Parameters
+## Planned Stop Parameters
 
 | Parameter | CLI flag | Default | Description |
 |---|---|---|---|
-| `shutdown_days` | `--shutdown-days` | 14 | Hard-stop calendar days (zero output) |
-| `ramp_down_days` | `--ramp-down-days` | 3 | Days before shutdown at reduced output |
+| `stop_days` | `--stop-days` | 14 | Hard-stop calendar days (zero output) |
+| `ramp_down_days` | `--ramp-down-days` | 3 | Days before the stop at reduced output |
 | `ramp_up_days` | `--ramp-up-days` | 3 | Days after restart before full yield |
 | `prebuild_weeks` | `--prebuild-weeks` | 4 | Weeks available to build stock ahead |
 | `prod_days_per_week` | `--prod-days-per-week` | 5 | Production days per week in the pre-build window |
@@ -104,7 +104,7 @@ See `data/skus_sample.csv` for a worked example.
 | `safety_stock_days` | `--safety-stock-days` | 7 | Days of demand cover to hold after restart |
 | `downstream_buffer_days` | `--downstream-buffer` | 14 | Transit days factory gate → consumer (DC + retail) |
 
-> **Effective Shutdown Days** = `ramp_down_days` + `shutdown_days` + `ramp_up_days`
+> **Effective Stop Days** = `ramp_down_days` + `stop_days` + `ramp_up_days`
 
 ---
 
@@ -122,7 +122,7 @@ See `data/skus_sample.csv` for a worked example.
 ## Key Formulas
 
 ```
-Effective Shutdown Days = ramp_down + shutdown_days + ramp_up
+Effective Stop Days = ramp_down + stop_days + ramp_up
 
 Demand to Cover = daily_demand × demand_multiplier × effective_days
 
@@ -132,7 +132,7 @@ Pre-Build Needed = max(0,  demand_to_cover
                           − alt_supply)
 
 Shelf Life Required = prebuild_weeks × 7
-                    + effective_shutdown_days
+                    + effective_stop_days
                     + downstream_buffer_days
 
 Production Days Required = total_prebuild_units / line_capacity_per_day
@@ -163,7 +163,7 @@ Calculate pre-build requirements for a list of SKUs.
 ```json
 {
   "params": {
-    "shutdown_days": 14,
+    "stop_days": 14,
     "ramp_down_days": 3,
     "ramp_up_days": 3,
     "prebuild_weeks": 4,
@@ -191,7 +191,7 @@ Calculate pre-build requirements for a list of SKUs.
 
 ```json
 {
-  "effective_shutdown_days": 20,
+  "effective_stop_days": 20,
   "total_prebuild_units": 10000.0,
   "production_days_required": 1.0,
   "production_days_available": 20,
@@ -269,8 +269,8 @@ Expected output: **28 passed**.
 | Quick planning check | Open `static/index.html`; adjust sliders; read KPIs |
 | Batch analysis (many SKUs) | `python cli.py --skus your_data.csv --output results.csv` |
 | Integrate into existing tools | `POST /api/calculate` from your planning system |
-| Sensitivity testing | Change `--shutdown-days`, `--prebuild-weeks`, etc. on the CLI |
-| Import as a library | `from calculator import calculate_all, ShutdownParams, SkuInput` |
+| Sensitivity testing | Change `--stop-days`, `--prebuild-weeks`, etc. on the CLI |
+| Import as a library | `from calculator import calculate_all, StopParams, SkuInput` |
 
 ---
 

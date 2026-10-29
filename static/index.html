@@ -1,4 +1,4 @@
-<title>Shutdown Impact Calculator</title>
+<title>Factory Planned Stop Calculator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
 
@@ -370,7 +370,7 @@ input:focus, select:focus {
 <header class="pg-header">
   <div class="hdr-icon">🏭</div>
   <div class="hdr-text">
-    <h1>Factory Shutdown Impact Calculator</h1>
+    <h1>Factory Planned Stop Impact Calculator</h1>
     <p>FMCG pre-build planning &amp; feasibility analysis</p>
   </div>
 </header>
@@ -378,7 +378,7 @@ input:focus, select:focus {
 <!-- ─ KPI strip ──────────────────────────────────────────────── -->
 <div class="kpi-row">
   <div class="kpi" id="kpi0">
-    <div class="kpi-lbl">Effective Shutdown</div>
+    <div class="kpi-lbl">Effective Stop Days</div>
     <div class="kpi-num" id="kvEffDays">—</div>
     <div class="kpi-sub">calendar days</div>
   </div>
@@ -414,21 +414,21 @@ input:focus, select:focus {
 <!-- ─ Timeline ───────────────────────────────────────────────── -->
 <div class="card">
   <div class="card-hd" onclick="tog('tl-bd','tl-ch')">
-    <h2>📅 Shutdown Timeline</h2>
+    <h2>📅 Planned Stop Timeline</h2>
     <span class="chev open" id="tl-ch">▼</span>
   </div>
   <div class="card-bd" id="tl-bd">
     <div class="tl-wrap">
       <div class="tl-seg pre"     id="tl-pre"  style="flex:28">Pre-build · 4 wks</div>
       <div class="tl-seg rdown"   id="tl-rd"   style="flex:3">↓ 3d</div>
-      <div class="tl-seg halt"    id="tl-halt" style="flex:14">SHUTDOWN · 14d</div>
+      <div class="tl-seg halt"    id="tl-halt" style="flex:14">STOP · 14d</div>
       <div class="tl-seg rup"     id="tl-ru"   style="flex:3">↑ 3d</div>
       <div class="tl-seg recover" id="tl-rec"  style="flex:28">Recovery · 4 wks</div>
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--fg2);">
       <span><span style="color:var(--acc);">■</span> Pre-build window</span>
       <span><span style="color:#D97706;">■</span> Ramp-down / Ramp-up</span>
-      <span><span style="color:#C0392B;">■</span> Shutdown (zero output)</span>
+      <span><span style="color:#C0392B;">■</span> Planned stop (zero output)</span>
       <span><span style="color:#16803E;">■</span> Recovery production</span>
     </div>
   </div>
@@ -443,12 +443,12 @@ input:focus, select:focus {
   <div class="card-bd" id="pm-bd">
     <div class="pgrid">
       <div class="fld">
-        <label>Shutdown Start Date</label>
+        <label>Planned Stop Start Date</label>
         <input type="date" id="startDate">
       </div>
       <div class="fld">
-        <label>Calendar Shutdown Days</label>
-        <input type="number" id="shutdownDays" value="14" min="1">
+        <label>Calendar Stop Days</label>
+        <input type="number" id="stopDays" value="14" min="1">
         <span class="fld-hint">Hard stop — zero production output</span>
       </div>
       <div class="fld">
@@ -464,7 +464,7 @@ input:focus, select:focus {
       <div class="fld">
         <label>Pre-Build Window (weeks)</label>
         <input type="number" id="prebuildWeeks" value="4" min="1">
-        <span class="fld-hint">Weeks to build stock before shutdown</span>
+        <span class="fld-hint">Weeks to build stock before the planned stop</span>
       </div>
       <div class="fld">
         <label>Production Days / Week</label>
@@ -508,7 +508,7 @@ input:focus, select:focus {
             <th>Current Stock<br>(units)</th>
             <th>Shelf Life<br>(days)</th>
             <th title="1.0 = normal. 1.2 = 20% higher demand during this period (promo/seasonal uplift)">Demand<br>Multiplier</th>
-            <th title="Units available from co-packer or sister plant during the shutdown period">Alt. Supply<br>(units)</th>
+            <th title="Units available from co-packer or sister plant during the planned stop">Alt. Supply<br>(units)</th>
             <th>ABC</th>
             <th></th>
           </tr>
@@ -575,7 +575,7 @@ input:focus, select:focus {
 </div>
 
 <div class="pg-footer">
-  Shelf life check assumes goods produced at the start of the pre-build window. Demand to cover = adjusted daily demand × (ramp-down + shutdown + ramp-up) days.<br>Safety stock target restores post-restart. All figures are planning estimates — validate against actual line schedules and confirmed shelf-life data.
+  Shelf life check assumes goods produced at the start of the pre-build window. Demand to cover = adjusted daily demand × (ramp-down + stop + ramp-up) days.<br>Safety stock target restores post-restart. All figures are planning estimates — validate against actual line schedules and confirmed shelf-life data.
 </div>
 
 <script>
@@ -598,7 +598,7 @@ const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/
 
 // ── Core calc ────────────────────────────────────────────────────
 function calcSku(s) {
-  const shut  = nv('shutdownDays');
+  const shut  = nv('stopDays');
   const rd    = nv('rampDown');
   const ru    = nv('rampUp');
   const pbwk  = nv('prebuildWeeks');
@@ -628,7 +628,7 @@ function calcSku(s) {
     case 'COVERED':    action = 'No pre-build needed. Confirm stock levels weekly and monitor for demand spikes.'; break;
     case 'OK':         action = `Pre-build ${fmt(Math.round(pbNeeded))} units spread across the ${pbwk}-week pre-build window. Enforce FIFO rotation.`; break;
     case 'TIGHT':      action = `Pre-build ${fmt(Math.round(pbNeeded))} units — shelf margin only +${Math.round(margin)}d. Delay production start or shorten storage time. Strict FIFO essential.`; break;
-    case 'INFEASIBLE': action = 'Options: (1) Source from co-packer/sister plant, (2) start pre-build closer to shutdown date, (3) accept planned stockout with commercial sign-off, (4) explore shelf-life extension.'; break;
+    case 'INFEASIBLE': action = 'Options: (1) Source from co-packer/sister plant, (2) start pre-build closer to the stop date, (3) accept planned stockout with commercial sign-off, (4) explore shelf-life extension.'; break;
   }
   return { effDays, adjDmd, dmdCover, sfStock, pbNeeded, shelfReq, shelfOk, margin, status, action };
 }
@@ -646,7 +646,7 @@ function render() {
 
 // ── KPIs & gauge ─────────────────────────────────────────────────
 function renderKpis(results) {
-  const shut  = nv('shutdownDays'), rd = nv('rampDown'), ru = nv('rampUp');
+  const shut  = nv('stopDays'), rd = nv('rampDown'), ru = nv('rampUp');
   const pbwk  = nv('prebuildWeeks'), pdwk = nv('prodDaysWk'), cap = nv('lineCap');
   const eff   = rd + shut + ru;
   const total = results.reduce((a, r) => a + r.c.pbNeeded, 0);
@@ -680,7 +680,7 @@ function renderKpis(results) {
 // ── Timeline ──────────────────────────────────────────────────────
 function renderTimeline() {
   const pbwk = nv('prebuildWeeks'), rd = nv('rampDown') || .1;
-  const shut = nv('shutdownDays'), ru = nv('rampUp') || .1;
+  const shut = nv('stopDays'), ru = nv('rampUp') || .1;
   const rec  = nv('prebuildWeeks');
   const pre  = pbwk * 7, recD = rec * 7;
   const tot  = pre + rd + shut + ru + recD;
@@ -693,7 +693,7 @@ function renderTimeline() {
 
   $('tl-pre').textContent  = `Pre-build · ${pbwk} wks`;
   $('tl-rd').textContent   = nv('rampDown') > 0 ? `↓ ${nv('rampDown')}d` : '';
-  $('tl-halt').textContent = `SHUTDOWN · ${shut}d`;
+  $('tl-halt').textContent = `STOP · ${shut}d`;
   $('tl-ru').textContent   = nv('rampUp') > 0 ? `↑ ${nv('rampUp')}d` : '';
   $('tl-rec').textContent  = `Recovery · ${rec} wks`;
 }
@@ -800,7 +800,7 @@ function renderActions(results) {
   if (cvd.length)
     acts.push({ cls:'ok', icon:'🟢',
       h4: `${cvd.length} SKU${cvd.length>1?'s':''}: No pre-build required`,
-      p:  cvd.map(r => esc(r.s.name)).join(', ') + '. Existing stock covers the full shutdown window including safety stock. Verify stock weekly.' });
+      p:  cvd.map(r => esc(r.s.name)).join(', ') + '. Existing stock covers the full planned stop window including safety stock. Verify stock weekly.' });
 
   if (tght.length)
     acts.push({ cls:'warn', icon:'⚠️',
@@ -810,7 +810,7 @@ function renderActions(results) {
   if (inf.length)
     acts.push({ cls:'risk', icon:'🔴',
       h4: `${inf.length} SKU${inf.length>1?'s':''}: Infeasible — shelf life too short to pre-build`,
-      p:  inf.map(r=>esc(r.s.name)).join(', ') + '. <strong>Required actions:</strong> (1) Source from a qualified co-packer or sister plant during the shutdown period. (2) Shorten pre-build window — produce closer to the shutdown date to reduce storage time. (3) Accept a planned stockout: agree with the commercial team, notify key accounts in advance, and plan recovery production. (4) Explore a shelf-life extension through formulation or packaging changes.' });
+      p:  inf.map(r=>esc(r.s.name)).join(', ') + '. <strong>Required actions:</strong> (1) Source from a qualified co-packer or sister plant during the planned stop. (2) Shorten pre-build window — produce closer to the stop date to reduce storage time. (3) Accept a planned stockout: agree with the commercial team, notify key accounts in advance, and plan recovery production. (4) Explore a shelf-life extension through formulation or packaging changes.' });
 
   if (dReq > dAvail)
     acts.push({ cls:'risk', icon:'🏭',
@@ -857,7 +857,7 @@ function tog(bdId, chId) {
 }
 
 // ── Wire param inputs ─────────────────────────────────────────────
-['shutdownDays','rampDown','rampUp','prebuildWeeks','prodDaysWk','lineCap','safetyDays','dsBuf','startDate']
+['stopDays','rampDown','rampUp','prebuildWeeks','prodDaysWk','lineCap','safetyDays','dsBuf','startDate']
   .forEach(id => $(id)?.addEventListener('input', render));
 
 // ── Default date (30 days out) ────────────────────────────────────
